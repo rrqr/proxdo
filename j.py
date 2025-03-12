@@ -14,7 +14,7 @@ def get_proxies_from_user():
     if use_proxy == 'y':
         print("أدخل عناوين البروكسيات (اكتب 'end' لإنهاء الإدخال):")
         while True:
-            proxy = input("أدخل عنوان البروكسي (مثال: http://proxy.example.com:8080): ").strip()
+            proxy = input("أدخل عنوان البروكسي (مثال: username:password@host:port): ").strip()
             if proxy.lower() == 'end':
                 break
             proxies.append(proxy)
@@ -58,7 +58,12 @@ async def send_request_aiohttp(url, session, request_counter, response_times, se
         try:
             start_time = time.time()
             if proxy:
-                async with session.get(url, proxy=proxy) as response:
+                # تقسيم البروكسي إلى مكوناته
+                proxy_parts = proxy.split('@')
+                auth, host_port = proxy_parts[0], proxy_parts[1]
+                proxy_url = f"http://{host_port}"
+                proxy_auth = aiohttp.BasicAuth(auth.split(':')[0], auth.split(':')[1])
+                async with session.get(url, proxy=proxy_url, proxy_auth=proxy_auth) as response:
                     await response.read()
             else:
                 async with session.get(url) as response:
@@ -75,7 +80,15 @@ async def send_request_httpx(url, client, request_counter, response_times, semap
         try:
             start_time = time.time()
             if proxy:
-                response = await client.get(url, proxies={"http": proxy, "https": proxy})
+                # تقسيم البروكسي إلى مكوناته
+                proxy_parts = proxy.split('@')
+                auth, host_port = proxy_parts[0], proxy_parts[1]
+                proxy_url = f"http://{host_port}"
+                proxies = {
+                    "http://": f"http://{auth}@{host_port}",
+                    "https://": f"http://{auth}@{host_port}"
+                }
+                response = await client.get(url, proxies=proxies)
             else:
                 response = await client.get(url)
             request_counter[0] += 1
@@ -89,7 +102,14 @@ def send_request_requests(url, request_counter, response_times, proxy=None):
     try:
         start_time = time.time()
         if proxy:
-            response = requests.get(url, timeout=10, proxies={"http": proxy, "https": proxy})
+            # تقسيم البروكسي إلى مكوناته
+            proxy_parts = proxy.split('@')
+            auth, host_port = proxy_parts[0], proxy_parts[1]
+            proxies = {
+                "http": f"http://{auth}@{host_port}",
+                "https": f"http://{auth}@{host_port}"
+            }
+            response = requests.get(url, timeout=10, proxies=proxies)
         else:
             response = requests.get(url, timeout=10)
         if response.status_code == 200:
